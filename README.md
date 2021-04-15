@@ -1,20 +1,3 @@
-## References :
-[Link 1](https://krex.k-state.edu/dspace/handle/2097/11984)
-
-[Link 2](https://en.wikipedia.org/wiki/Reliable_User_Datagram_Protocol)
-
-[Link 3](https://tools.ietf.org/html/draft-ietf-sigtran-reliable-udp-00)
-
-[Implementation 0](https://github.com/ujjwal-raizada/FSSP-reliable-protocol)
-
-[Implementation 1](https://github.com/mike-lawrence/python-rudp)
-
-[Implementation 2](https://github.com/Renelvon/txrudp)
-
-[Implementation 3](https://github.com/iamkroot/YARU)
-
-[Advanced Networking and Distributed Systems](https://gwadvnet20.github.io/)
-
 ## RUDP (Reliable UDP)
 ### *Reliable and Simple Protocol For Humans.*
 
