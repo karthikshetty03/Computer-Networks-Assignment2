@@ -1,0 +1,88 @@
+## References :
+[Link 1](https://krex.k-state.edu/dspace/handle/2097/11984)
+
+[Link 2](https://en.wikipedia.org/wiki/Reliable_User_Datagram_Protocol)
+
+[Link 3](https://tools.ietf.org/html/draft-ietf-sigtran-reliable-udp-00)
+
+[Implementation 0](https://github.com/ujjwal-raizada/FSSP-reliable-protocol)
+
+[Implementation 1](https://github.com/mike-lawrence/python-rudp)
+
+[Implementation 2](https://github.com/Renelvon/txrudp)
+
+[Implementation 3](https://github.com/iamkroot/YARU)
+
+[Advanced Networking and Distributed Systems](https://gwadvnet20.github.io/)
+
+## RUDP (Reliable UDP)
+### *Reliable and Simple Protocol For Humans.*
+
+RUDP provides reliable communication over unreliable UDP protocol and also directly works with
+python objects for simplicity. This class provides API ​ ( application program interface) for the
+underlying reliable application layer protocol. An object of this class should be instantiated to set
+up communication with a peer. This protocol requires python3 to run and doesn’t have any other
+dependency. All standard python packages are used to build this protocol.
+
+the actual protocol RUDP doesn't have any dependency other than python3.
+but the file transfer uses "tqdm" library to display progress bar.
+
+### 1) File Transfer
+
+	setup:
+		$ pip3 install pipenv
+		$ pipenv install
+
+		terminal 1:
+			$ pipenv shell
+			$ python3 file-transfer.py
+			$ client
+
+		terminal 2:
+			$ pipenv shell
+			$ python3 file-transfer.py
+			$ server
+
+#### description:
+Now, server will ask for a path, the path can be a file or a folder,
+if it's a file it will be transfered and if it's a folder, all the files
+in it's root location will be transferred sequentially. Server will look for
+files inside the./storage folder only. (you can leave the path blank to transfer
+the default file i.e. 'assignment-3.pdf')
+
+All the files received by the client are stored inside ./storage/received_files
+
+	NOTE: Client should be started first in all the cases.
+
+
+### 2) Performance measurement
+
+to measure the bandwidth of the protocol, you have to run performance_measurement.py in two different
+terminals, first start the client (receiver) by inputing '2' then start the server (sender) by inputing
+'1'. This script will run for 1 minute and then output the bandwidth and bytes sent.
+
+#### setup:
+
+	in terminal 1
+		$ python3 performance_test.py
+		$ 2
+
+	in terminal 2
+		$ python3 performance_test.py
+		$ 1
+
+### 3) Reliability test
+
+to test reliability, just run reliablity_test.py in both the terminals and server will send 100 packets in sequence
+and client which check if all 100 packets reached and are in order.
+
+
+#### setup:
+
+	in terminal 1
+		$ python3 reliability_test.py
+		$ 2
+
+	in terminal 2
+		$ python3 reliability_test.py
+		$ 1
