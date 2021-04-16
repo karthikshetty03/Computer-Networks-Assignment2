@@ -30,7 +30,6 @@ class connectionNotCreatedException(RuntimeError):
 
 """ RELIABKE UDP PROTOCOL  """
 
-
 class RUDP:
     BUFSIZE = 1500
     PACKET_SIZE = 1400  # in bytes
