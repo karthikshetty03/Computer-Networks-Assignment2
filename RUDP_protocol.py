@@ -1,16 +1,16 @@
-import socket
-import pickle
-from pprint import pprint
-from threading import Thread, Lock
-import time
-import random
 import builtins
 import hashlib
-from copy import deepcopy
+import pickle
+import random
+import socket
+import time
 from collections.abc import Hashable
+from copy import deepcopy
+from pprint import pprint
+from threading import Lock, Thread
 
 
-PRODUCTION = True  # change it to false to stop stdout prints from protocol
+PRODUCTION = True  # change it to false for stdout prints from protocol
 
 
 def print(*args, **kargs):

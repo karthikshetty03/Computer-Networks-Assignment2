@@ -1,8 +1,8 @@
-from RUDP_protocol import RUDP
-import time
 import os
-from tqdm import tqdm
 import sys
+import time
+from tqdm import tqdm
+from RUDP_protocol import RUDP
 
 port1 = 8081
 port2 = 8082
@@ -27,6 +27,7 @@ def server():
     socket = RUDP("localhost", port1)
     socket.connect("localhost", port2)
     socket.listen()
+
     while True:
         filename = input("\nfile or folder name (in storage folder): ")
 
@@ -42,7 +43,8 @@ def server():
             f = open(file_path, "rb")
             filesize = os.path.getsize(file_path)
             print(f"sending {file} to client")
-            data = (file, filesize)  # protocol can send any python hashable object
+            # protocol can send any python hashable object
+            data = (file, filesize)
             socket.send(data)
             print(f"filesize: {filesize}")
 
@@ -89,10 +91,13 @@ def client():
 
 
 if __name__ == "__main__":
-    t = input("type (server or client): ")
-    if t == "server":
-        server()
-    elif t == "client":
-        client()
-    else:
-        print("wrong input.")
+    while True:
+        t = input("Enter 'server' or 'client': ")
+        if t == "server":
+            server()
+            break
+        elif t == "client":
+            client()
+            break
+        else:
+            print("wrong input, Enter 'client' or 'server'")
