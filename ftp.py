@@ -1,11 +1,12 @@
 import os
 import sys
 import time
+import random
 from tqdm import tqdm
 from RUDP_protocol import RUDP
 
-port1 = 8081
-port2 = 8082
+port1 = 8083
+port2 = 8084
 BUFFERSIZE = 512
 
 
