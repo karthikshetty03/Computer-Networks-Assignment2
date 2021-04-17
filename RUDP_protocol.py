@@ -18,13 +18,19 @@ def print(*args, **kargs):
 
 
 class createSocketError(RuntimeError):
-    def __init__(self, args):
-        self.args = args
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
 
 
 class createConnectionError(RuntimeError):
-    def __init__(self, args):
-        self.args = args
+    def __init__(self, value):
+        self.value = value
+
+    def __str__(self):
+        return repr(self.value)
 
 
 """ RELIABKE UDP PROTOCOL  """
@@ -170,7 +176,9 @@ class RUDP:
                 if not self.statusOfConn and len(self.senderBuffer) == 0:
                     return
                 with self.senderLock:
-                    print("The lock has been acquired by the retransmiting thread to retransmit  timed out packets")
+                    print(
+                        "The lock has been acquired by the retransmiting thread to retransmit  timed out packets"
+                    )
                     currentSenderBuffer = self.senderBuffer
                     i = 0
                     while i < len(currentSenderBuffer):
@@ -178,7 +186,9 @@ class RUDP:
                         diff = time_now - currentSenderBuffer[i][2]
                         if RUDP.connectionTimeout <= diff:
                             print("Retransmitting: ", currentSenderBuffer[i][0])
-                            self.writeHelper(currentSenderBuffer[i][1], "DATA", retransmit=True)
+                            self.writeHelper(
+                                currentSenderBuffer[i][1], "DATA", retransmit=True
+                            )
                         else:
                             # The remaining packets have not been timed out yet
                             break
@@ -272,13 +282,13 @@ class RUDP:
         try:
             if len(self.receiverBuffer) == 0:
                 return None
-            data = self.receiverBuffer[0];
+            data = self.receiverBuffer[0]
             for val in self.receiverBuffer:
                 data = min(data, val)
             if "data" in data[1] and data[0] == self.nextSequenceAppLock:
                 with self.sequenceAppLock:
                     self.nextSequenceAppLock += 1
-                #Remove header data before forwading
+                # Remove header data before forwading
                 self.receiverBuffer.remove(data)
                 return data[1]["data"]
             else:
@@ -319,10 +329,11 @@ class RUDP:
                 print("buffer size full")
                 return False
             # if user modify the object, the shouldn't be changed
-            data = deepcopy(data)  
-            seq = self.getNextSequenceNumber()
-             #it will store header information
-            sendData = {}  
+            data = deepcopy(data)
+            self.sequenceNumber += 1
+            seq = self.sequenceNumber
+            # it will store header information
+            sendData = {}
             sendData["seq"] = seq
             sendData["data"] = data
             sendData["hash"] = hashlib.md5(pickle.dumps(data)).hexdigest()
@@ -331,29 +342,10 @@ class RUDP:
         except Exception as e:
             print("Error in non-blocking send: ", e)
 
-    def getNextSequenceNumber(self):
-        try:
-            with self.sequenceLock:
-                self.sequenceNumber += 1
-                return self.sequenceNumber
-        except Exception as e:
-            print("Failed to retrieve next sequence Number: ", e)
-
-    def getBufferSize(self):
-        try:
-            return self.receiverBuffer
-        except Exception as e:
-            print("Error in getting buffer size", e)
-
     @staticmethod
     def printReliableStats():
         print("bufferSize (bytes recv function accepts): ", RUDP.bufferSize)
-        print(
-            "windowSize (number of packets in send or recv buffer): ", RUDP.windowSize
-        )
+        print("windowSize (number of packets in send or recv buffer): ", RUDP.windowSize)
         print("packetSize (Max size of send packet in bytes): ", RUDP.packetSize)
-        print(
-            "connectionTimeout (time in seconds to retransmit packet): ",
-            RUDP.connectionTimeout,
-        )
+        print("connectionTimeout (time in seconds to retransmit packet): ", RUDP.connectionTimeout)
         print("blockAndSleep (time in seconds to recheck buffer): ", RUDP.blockAndSleep)
