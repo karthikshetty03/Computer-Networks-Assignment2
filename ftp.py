@@ -11,59 +11,97 @@ port2 = 8084
 BUFFERSIZE = 512
 
 
+def appendFiles(filename):
+    Files = []
+    for file in os.listdir("storage/" + filename):
+        if os.path.isfile("storage/" + file):
+            Files.append(file)
+    return Files
+
+
 def retrieveFilesHelper(filename):
-    file_list = []
     if os.path.isfile("storage/" + filename):
         return [filename]
     elif os.path.isdir("storage/" + filename):
-        for file in os.listdir("storage/" + filename):
-            if os.path.isfile("storage/" + file):
-                file_list.append(file)
-        return file_list
+        FilesList = appendFiles(filename)
+        return FilesList
     else:
-        print("file / folder not found")
+        print("File/Folder not found")
         return []
+
+
+def fileDetails(file):
+    file_path = "storage/" + file
+    f = open(file_path, "rb")
+    filesize = os.path.getsize(file_path)
+    print(f"sending {file} to client")
+    return f, filesize
+
+
+def serverLoop(socket, file_list):
+    for file in file_list:
+        try:
+            f, filesize = fileDetails(file)
+            data = (file, filesize)
+            socket.send(data)
+            print(f"filesize: {filesize}")
+
+            sendData = 0
+
+            with tqdm(total=filesize) as indicator:
+                data = f.read(BUFFERSIZE)
+                while data:
+                    socket.send(data)
+                    update_value = min(BUFFERSIZE, filesize - sendData)
+                    sendData += BUFFERSIZE
+                    indicator.update(update_value)
+                    data = f.read(BUFFERSIZE)
+            print("\ndone sending")
+        except Exception as e:
+            print(e)
+        finally:
+            f.close()
 
 
 def server():
     socket = RUDP("localhost", port1)
     socket.connect("localhost", port2)
     socket.listen()
+    try:
+        while True:
+            filename = input("\nfile or folder name (in storage folder): ")
+            if not filename:
+                filename = "L.txt"
+            time.sleep(5)
+            file_list = retrieveFilesHelper(filename)
+            print(f"sending {len(file_list)} files to client.")
+            serverLoop(socket, file_list)
+    except Exception as e:
+        print(e)
 
-    while True:
-        filename = input("\nfile or folder name (in storage folder): ")
 
-        if filename == "":
-            filename = "assignment-3.pdf"
+def clientLoop(socket):
+    try:
+        while True:
+            print("\nwaiting for another file...")
+            filename, filesize = socket.recv()
+            print(f"filename: {filename}, filesize: {filesize}")
+            receivedData = 0
 
-        time.sleep(5)
-        file_list = retrieveFilesHelper(filename)
-        print(f"sending {len(file_list)} files to client.")
-
-        for file in file_list:
-            file_path = "storage/" + file
-            f = open(file_path, "rb")
-            filesize = os.path.getsize(file_path)
-            print(f"sending {file} to client")
-            # protocol can send any python hashable object
-            data = (file, filesize)
-            socket.send(data)
-            print(f"filesize: {filesize}")
-
-            data_sent = 0
-
-            with tqdm(total=filesize) as indicator:
-                data = f.read(BUFFERSIZE)
-                while data:
-                    socket.send(data)
-                    # print(f"sent: {data_sent} / {filesize}", end="\r")
-                    update_value = min(BUFFERSIZE, filesize - data_sent)
-                    data_sent += BUFFERSIZE
-                    indicator.update(update_value)
-                    data = f.read(BUFFERSIZE)
-
-            f.close()
-            print("\ndone sending")
+            with open("storage/received_files/" + filename, "wb+") as f:
+                with tqdm(total=filesize) as indicator:
+                    while True:
+                        data = socket.recv()
+                        receivedData += len(data)
+                        f.write(data)
+                        indicator.update(len(data))
+                        if receivedData >= filesize:
+                            break
+            print("\ntransfer complete")
+    except Exception as e:
+        print(e)
+    finally:
+        f.close()
 
 
 def client():
@@ -71,25 +109,7 @@ def client():
     socket.connect("localhost", port1)
     socket.listen()
     time.sleep(5)
-
-    while True:
-        print("\nwaiting for another file...")
-        filename, filesize = socket.recv()
-        print(f"filename: {filename}, filesize: {filesize}")
-        data_recv = 0
-
-        with open("storage/received_files/" + filename, "wb+") as f:
-            with tqdm(total=filesize) as indicator:
-                while True:
-                    data = socket.recv()
-                    data_recv += len(data)
-                    f.write(data)
-                    # print(f"received: {data_recv} / {filesize}", end="\r")
-                    indicator.update(len(data))
-                    if data_recv >= filesize:
-                        break
-
-        print("\ntransfer complete")
+    clientLoop(socket)
 
 
 if __name__ == "__main__":
