@@ -1,280 +1,320 @@
-import builtins
-import hashlib
-import pickle
-import random
-import socket
-import time
+import builtins, hashlib, pickle, random, socket, time
 from collections.abc import Hashable
 from copy import deepcopy
 from pprint import pprint
 from threading import Lock, Thread
 
+DEBUG_MODE = 0  # change it to false for stdout prints from protocol
 
-PRODUCTION = True  # change it to false for stdout prints from protocol
-
-
-def print(*args, **kargs):
-    if PRODUCTION == False:
+def switch(val, *args, **kargs):
+    if val == 1:
         builtins.print(*args, **kargs)
 
 
-class socketNotCreatedException(RuntimeError):
+def print(*args, **kargs):
+    if DEBUG_MODE == 1:
+        switch(DEBUG_MODE, args, kargs)
+
+
+class createSocketError(RuntimeError):
     def __init__(self, args):
         self.args = args
 
 
-class connectionNotCreatedException(RuntimeError):
+class createConnectionError(RuntimeError):
     def __init__(self, args):
         self.args = args
 
 
 """ RELIABKE UDP PROTOCOL  """
 
+
 class RUDP:
-    BUFSIZE = 1500
-    PACKET_SIZE = 1400  # in bytes
-    WINDOW_SIZE = 1000  # size of buffer windows
-    TIMEOUT = 1  # in seconds: starting of retransmission thread
-    PACKET_LOSS = 0  # in range(0, 11), 0 for no loss
-    BLOCKING_SLEEP = 0.00001
+    bufferSize = 1500
+    packetSize = 1400  # in bytes
+    windowSize = 1000  # size of buffer windows
+    connectionTimeout = 1  # in seconds: starting of retransmission thread
+    packetLosses = 0  # in range(0, 11), 0 for no loss
+    blockAndSleep = 0.00001
 
     def __init__(self, interface, port):
         self.interface = interface
         self.port = port
-        self.sock = self.__create_socket(interface, port)
-        self.recv_buffer = []
-        self.sent_buffer = []
-        self.seq_num = 0
-        self.seq_map = {}
-        self.conn_close_time = 0
-        self.connection_status = False
-        self.sent_lock = Lock()
-        self.sock_recv_lock = Lock()
-        self.sock_send_lock = Lock()
-        self.seq_lock = Lock()
-        self.seq_to_app_lock = Lock()
-        self.next_seq_to_app = (
-            self.seq_num + 1
-        )  # last seq number of packet transferred to application
+        self.sock = self.socketInit(interface, port)
+        self.receiverBuffer = []
+        self.senderBuffer = []
+        self.sequenceNumber = 0
+        self.sequenceHash = {}
+        self.closeConnTime = 0
+        self.statusOfConn = False
+        self.senderLock = Lock()
+        self.recieveSocketLock = Lock()
+        self.sendSocketLock = Lock()
+        self.sequenceLock = Lock()
+        self.sequenceAppLock = Lock()
 
-    def packet_loss_rate(self, value):
-        if 10 >= value >= 0:
-            RUDP.PACKET_LOSS = value
+        # last seq number of packet transferred to application
+        self.nextSequenceAppLock = self.sequenceNumber + 1
+
+    """
+    Standard socket functions for creating socket and sending/recieving data 
+    with reliability helper functions called for reliable UDP transfer protocol
+    """
+
+    def socketInit(self, interface, port):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((interface, port))
+            return sock
+        except Exception as e:
+            print("Eroor occured while creating socket!: ", e)
+
+    def connect(self, interface, port):
+        try:
+            self.sock.connect((interface, port))
+            self.statusOfConn = True
+        except Exception as e:
+            print("Error occured while trying to connect: ", e)
+
+    def listen(self):
+        try:
+            if self.statusOfConn == False:
+                raise createConnectionError("First connect to other peer.")
+            listenerThread = Thread(target=self.listenerHelper)
+            retransmissionThread = Thread(target=self.retransmitHelper)
+            listenerThread.start()
+            retransmissionThread.start()
+        except Exception as e:
+            print("Erro occured while listen: ", e)
+
+    def send(self, data, blocking=True):
+        try:
+            if not isinstance(data, Hashable):
+                raise Exception("Data object is not hashable.")
+            if blocking == True:
+                while self.sendNonBlockingMode(data) == False:
+                    time.sleep(RUDP.blockAndSleep)
+            else:
+                return self.sendNonBlockingMode(data)
+        except Exception as e:
+            print("Error occured while sending data: ", e)
+
+    def recv(self, blocking=True):
+        try:
+            if blocking == True:
+                while True:
+                    data = self.readHelper()
+                    if data != None:
+                        data = deepcopy(data)
+                        return data
+                    time.sleep(RUDP.blockAndSleep)
+            else:
+                data = self.readHelper()
+                data = deepcopy(data)
+                return data
+        except Exception as e:
+            print("Error occured while receiving data: ", e)
+
+    def close(self):
+        try:
+            self.statusOfConn = False
+            self.closeConnTime = time.time()
+        except Exception as e:
+            print("Error occured while closing connection: ", e)
+
+    def rateOfpacketLoss(self, value):
+        if value <= 10 and value >= 0:
+            RUDP.packetLosses = value
         else:
             raise Exception("Value not in range. (0 - 10)")
 
-    def __create_socket(self, interface, port):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind((interface, port))
-        return sock
+    """
+    Reliability Helper Functions over UDP protocol
+    """
 
-    def __retransmit(self):
-        while True:
-            time.sleep(RUDP.TIMEOUT)
+    def retransmitHelper(self):
+        try:
+            while True:
+                time.sleep(RUDP.connectionTimeout)
 
-            if self.connection_status == False and len(self.sent_buffer) == 0:
-                return
+                if self.statusOfConn == False and len(self.senderBuffer) == 0:
+                    return
 
-            with self.sent_lock:
-                print("Retransmitting thread aquired the lock...")
-                for packet in self.sent_buffer:
-                    time_now = time.time()
-                    if (time_now - packet[2]) >= RUDP.TIMEOUT:
-                        print("Retransmitting: ", packet[0])
-                        self.__write_socket(packet[1], "DATA", retransmit=True)
-                    else:
-                        break  # rest of the packets in the queue are yet to timeout
-            print("# packets in buffer: ", len(self.sent_buffer))
+                with self.senderLock:
+                    print("Retransmitting thread aquired the lock...")
+                    for packet in self.senderBuffer:
+                        time_now = time.time()
+                        if (time_now - packet[2]) >= RUDP.connectionTimeout:
+                            print("Retransmitting: ", packet[0])
+                            self.writeHelper(packet[1], "DATA", retransmit=True)
+                        # rest of the packets in the queue are yet to connectionTimeout
+                        else:
+                            break
+                print("# packets in buffer: ", len(self.senderBuffer))
+        except Exception as e:
+            print("Error occured while retransmiting packets: ", e)
 
-    def connect(self, interface, port):
-        self.sock.connect((interface, port))
-        self.connection_status = True
+    def listenerHelper(self):
+        try:
+            if self.sock == None:
+                raise createSocketError("Socket not created")
 
-    def close(self):
-        self.connection_status = False
-        self.conn_close_time = time.time()
+            count_ACK = 0  # counts number of acke'd packets still in sent list
+            map_ACK = set()
+            print("listening for datagrams at {}:".format(self.sock.getsockname()))
 
-    def __next_seq(self):
-        with self.seq_lock:
-            self.seq_num += 1
-            return self.seq_num
+            while True:
+                try:
+                    with self.recieveSocketLock:
+                        data, address = self.sock.recvfrom(RUDP.bufferSize)
+                except Exception as _:
+                    return
 
-    def listen(self):
-        if self.connection_status == False:
-            raise connectionNotCreatedException("First connect to other peer.")
+                data_recv = data
+                print("client at {}".format(address))
+                data_recv = pickle.loads(data_recv)
+                print(data_recv)
 
-        listening_thread = Thread(target=self.__start_listening)
-        restransmission_thread = Thread(target=self.__retransmit)
+                if data_recv["type"] == "ACK":
+                    print("recv ACK for: ", data_recv["seqence_ACK"])
+                    print("# packets in buffer: ", len(self.senderBuffer))
+                    count_ACK += 1
+                    map_ACK.add(data_recv["seqence_ACK"])
 
-        listening_thread.start()
-        restransmission_thread.start()
-
-    def __start_listening(self):
-        if self.sock == None:
-            raise socketNotCreatedException("Socket not created")
-
-        ack_counter = 0  # counts number of acke'd packets still in sent list
-        ack_map = set()
-        print("listening for datagrams at {}:".format(self.sock.getsockname()))
-
-        while True:
-            try:
-                with self.sock_recv_lock:
-                    data, address = self.sock.recvfrom(RUDP.BUFSIZE)
-            except Exception as _:
-                return
-
-            data_recv = data
-            print("client at {}".format(address))
-            data_recv = pickle.loads(data_recv)
-            print(data_recv)
-
-            if data_recv["type"] == "ACK":
-                print("recv ACK for: ", data_recv["seq_ack"])
-                print("# packets in buffer: ", len(self.sent_buffer))
-                ack_counter += 1
-                ack_map.add(data_recv["seq_ack"])
-
-                if ack_counter >= (RUDP.WINDOW_SIZE / 10) or (
-                    ((time.time() - self.conn_close_time) >= 5 * RUDP.TIMEOUT)
-                    and self.connection_status == False
-                ):
-
-                    ack_counter = 0
-                    temp_sent_buffer = []
-                    with self.sent_lock:
-                        print("listening thread aquired lock.")
-                        for packet in self.sent_buffer:
-                            if packet[0] not in ack_map:
-                                temp_sent_buffer.append(packet)
-                        self.sent_buffer = temp_sent_buffer
-                        ack_map = set()
-
-            else:
-
-                if data_recv["seq"] >= (
-                    self.next_seq_to_app + (RUDP.WINDOW_SIZE - (RUDP.WINDOW_SIZE / 10))
-                ):
-                    # the recieved data is outside 90% of the buffer window size
-                    continue
-
-                data = data_recv["data"]
-                if hashlib.md5(pickle.dumps(data)).hexdigest() != data_recv["hash"]:
-                    # check if any inconsistant data has arrived
-                    print("inconsistent data received")
-                    continue
-
-                if (len(self.recv_buffer) < RUDP.WINDOW_SIZE) or self.seq_map.get(
-                    data_recv["seq"]
-                ) != None:
-                    print("sending ACK for: ", data_recv["seq"])
-                    data_snd = {}
-                    data_snd["seq_ack"] = data_recv["seq"]
-                    self.__write_socket(data_snd, "ACK")
-
-                if (
-                    len(self.recv_buffer) < RUDP.WINDOW_SIZE
-                    and self.seq_map.get(data_recv["seq"]) == None
-                ):
-                    self.recv_buffer.append((data_recv["seq"], data_recv))
-                    self.seq_map[data_recv["seq"]] = True
+                    if count_ACK >= (RUDP.windowSize / 10) or (
+                        ((time.time() - self.closeConnTime) >= 5 * RUDP.connectionTimeout)
+                        and self.statusOfConn == False
+                    ):
+                        count_ACK = 0
+                        temp_senderBuffer = []
+                        with self.senderLock:
+                            print("listening thread aquired lock.")
+                            for packet in self.senderBuffer:
+                                if packet[0] not in map_ACK:
+                                    temp_senderBuffer.append(packet)
+                            self.senderBuffer = temp_senderBuffer
+                            map_ACK = set()
 
                 else:
-                    print("data rejected: data already recieved or buffer full")
+                    if data_recv["seq"] >= (
+                        self.nextSequenceAppLock
+                        + (RUDP.windowSize - (RUDP.windowSize / 10))
+                    ):
+                        # the recieved data is outside 90% of the buffer window size
+                        continue
 
-    def __read_socket(self):
-        if len(self.recv_buffer) == 0:
-            return None
+                    data = data_recv["data"]
 
-        data = min(self.recv_buffer)
+                    if hashlib.md5(pickle.dumps(data)).hexdigest() != data_recv["hash"]:
+                        # check if any inconsistant data has arrived
+                        print("inconsistent data received")
+                        continue
 
-        if "data" in data[1] and data[0] == self.next_seq_to_app:
-            print("packet to application: ", self.next_seq_to_app)
-            with self.seq_to_app_lock:
-                self.next_seq_to_app += 1
-            self.recv_buffer.remove(data)
-            return data[1][
-                "data"
-            ]  # removing header information before forwarding data to application
-        else:
-            return None
+                    if (
+                        len(self.receiverBuffer) < RUDP.windowSize
+                    ) or self.sequenceHash.get(data_recv["seq"]) != None:
+                        print("sending ACK for: ", data_recv["seq"])
+                        data_snd = {}
+                        data_snd["seqence_ACK"] = data_recv["seq"]
+                        self.writeHelper(data_snd, "ACK")
 
-    def __write_socket(self, data, data_type, retransmit=False):
-        if self.sock == None:
-            raise socketNotCreatedException("Socket not created")
+                    if (
+                        len(self.receiverBuffer) < RUDP.windowSize
+                        and self.sequenceHash.get(data_recv["seq"]) == None
+                    ):
+                        self.receiverBuffer.append((data_recv["seq"], data_recv))
+                        self.sequenceHash[data_recv["seq"]] = True
 
-        data = deepcopy(data)
-        data["type"] = data_type  # setting type of packet in header information
-        if data_type == "DATA" and retransmit == False:
+                    else:
+                        print("data rejected: data already recieved or buffer full")
+        except Exception as e:
+            print("Error occured in reliable listener: ", e)
 
-            with self.sent_lock:
-                self.sent_buffer.append((data["seq"], data, time.time()))
+    def readHelper(self):
+        try:
+            if len(self.receiverBuffer) == 0:
+                return None
 
-        data_send = pickle.dumps(data)
+            data = min(self.receiverBuffer)
 
-        if len(data_send) > RUDP.PACKET_SIZE:
-            raise Exception("Packet size greater the allowed size.")
+            if "data" in data[1] and data[0] == self.nextSequenceAppLock:
+                print("packet to application: ", self.nextSequenceAppLock)
+                with self.sequenceAppLock:
+                    self.nextSequenceAppLock += 1
+                # removing header information before forwarding data to application
+                self.receiverBuffer.remove(data)
+                return data[1]["data"]
+            else:
+                return None
+        except Exception as e:
+            print("Error occured in reliable read: ", e)
 
-        rn = random.randint(0, 11)
+    def writeHelper(self, data, data_type, retransmit=False):
+        try:
+            if self.sock == None:
+                raise createSocketError("Socket not created")
 
-        if rn >= RUDP.PACKET_LOSS:  # simulating ACK packet loss
-            try:
-                with self.sock_send_lock:
-                    self.sock.sendall(data_send)
-            except Exception as _:
-                return
-        else:
-            print("packet lost")
-
-    def get_buffer(self):
-        return self.recv_buffer
-
-    def recv(self, blocking=True):
-        if blocking == True:
-            while True:
-                data = self.__read_socket()
-                if data != None:
-                    data = deepcopy(data)
-                    return data
-                time.sleep(RUDP.BLOCKING_SLEEP)
-        else:
-            data = self.__read_socket()
             data = deepcopy(data)
-            return data
+            # setting type of packet in header information
+            data["type"] = data_type
+            if data_type == "DATA" and retransmit == False:
+                with self.senderLock:
+                    self.senderBuffer.append((data["seq"], data, time.time()))
 
-    def __non_blocking_send(self, data):
-        if len(self.sent_buffer) > RUDP.WINDOW_SIZE:
-            print("buffer size full")
-            return False
+            data_send = pickle.dumps(data)
 
-        data = deepcopy(data)  # if user modify the object, the shouldn't be changed
-        seq = self.__next_seq()
-        data_snd = {}  # it will store header information
-        data_snd["seq"] = seq
-        data_snd["data"] = data
-        data_snd["hash"] = hashlib.md5(pickle.dumps(data)).hexdigest()
-        self.__write_socket(data_snd, "DATA")
-        return True
+            if len(data_send) > RUDP.packetSize:
+                raise Exception("Packet size greater the allowed size.")
 
-    def send(self, data, blocking=True):
-        if not isinstance(data, Hashable):
-            raise Exception("Data object is not hashable.")
+            rn = random.randint(0, 11)
 
-        if blocking == True:
-            while self.__non_blocking_send(data) == False:
-                time.sleep(RUDP.BLOCKING_SLEEP)
-        else:
-            return self.__non_blocking_send(data)
+            # simulating ACK packet loss
+            if rn >= RUDP.packetLosses:
+                try:
+                    with self.sendSocketLock:
+                        self.sock.sendall(data_send)
+                except Exception as _:
+                    return
+            else:
+                print("packet lost")
+        except Exception as e:
+            print("Error occured in reliable write", e)
+
+    def sendNonBlockingMode(self, data):
+        try:
+            if len(self.senderBuffer) > RUDP.windowSize:
+                print("buffer size full")
+                return False
+            data = deepcopy(data)  # if user modify the object, the shouldn't be changed
+            seq = self.getNextSequenceNumber()
+            data_snd = {}  # it will store header information
+            data_snd["seq"] = seq
+            data_snd["data"] = data
+            data_snd["hash"] = hashlib.md5(pickle.dumps(data)).hexdigest()
+            self.writeHelper(data_snd, "DATA")
+            return True
+        except Exception as e:
+            print("Error in non-blocking send: ", e)
+
+    def getNextSequenceNumber(self):
+        try:
+            with self.sequenceLock:
+                self.sequenceNumber += 1
+                return self.sequenceNumber
+        except Exception as e:
+            print("Failed to retrieve next sequence Number: ", e)
+
+    def getBufferSize(self):
+        try:
+            return self.receiverBuffer
+        except Exception as e:
+            print("Error in getting buffer size", e)
 
     @staticmethod
-    def print_config():
-        print("BUFSIZE (bytes recv function accepts): ", RUDP.BUFSIZE)
-        print(
-            "WINDOW_SIZE (number of packets in send or recv buffer): ", RUDP.WINDOW_SIZE
-        )
-        print("PACKET_SIZE (Max size of send packet in bytes): ", RUDP.PACKET_SIZE)
-        print("TIMEOUT (time in seconds to retransmit packet): ", RUDP.TIMEOUT)
-        print(
-            "BLOCKING_SLEEP (time in seconds to recheck buffer): ", RUDP.BLOCKING_SLEEP
-        )
+    def printReliableStats():
+        print("bufferSize (bytes recv function accepts): ", RUDP.bufferSize)
+        print("windowSize (number of packets in send or recv buffer): ", RUDP.windowSize)
+        print("packetSize (Max size of send packet in bytes): ", RUDP.packetSize)
+        print("connectionTimeout (time in seconds to retransmit packet): ", RUDP.connectionTimeout)
+        print("blockAndSleep (time in seconds to recheck buffer): ", RUDP.blockAndSleep)
