@@ -170,9 +170,7 @@ class RUDP:
                 if not self.statusOfConn and len(self.senderBuffer) == 0:
                     return
                 with self.senderLock:
-                    print(
-                        "The lock has been acquired by the retransmiting thread to retransmit the packets which are timed out"
-                    )
+                    print("The lock has been acquired by the retransmiting thread to retransmit  timed out packets")
                     currentSenderBuffer = self.senderBuffer
                     i = 0
                     while i < len(currentSenderBuffer):
@@ -180,9 +178,7 @@ class RUDP:
                         diff = time_now - currentSenderBuffer[i][2]
                         if RUDP.connectionTimeout <= diff:
                             print("Retransmitting: ", currentSenderBuffer[i][0])
-                            self.writeHelper(
-                                currentSenderBuffer[i][1], "DATA", retransmit=True
-                            )
+                            self.writeHelper(currentSenderBuffer[i][1], "DATA", retransmit=True)
                         else:
                             # The remaining packets have not been timed out yet
                             break
@@ -257,9 +253,9 @@ class RUDP:
                         len(self.receiverBuffer) < RUDP.windowSize
                     ) or self.sequenceHash.get(receivedData["seq"]) != None:
                         print("sending ACK for: ", receivedData["seq"])
-                        data_snd = {}
-                        data_snd["seqence_ACK"] = receivedData["seq"]
-                        self.writeHelper(data_snd, "ACK")
+                        sendData = {}
+                        sendData["seqence_ACK"] = receivedData["seq"]
+                        self.writeHelper(sendData, "ACK")
 
                     if (
                         len(self.receiverBuffer) < RUDP.windowSize
@@ -276,12 +272,13 @@ class RUDP:
         try:
             if len(self.receiverBuffer) == 0:
                 return None
-            data = min(self.receiverBuffer)
+            data = self.receiverBuffer[0];
+            for val in self.receiverBuffer:
+                data = min(data, val)
             if "data" in data[1] and data[0] == self.nextSequenceAppLock:
-                print("packet to application: ", self.nextSequenceAppLock)
                 with self.sequenceAppLock:
                     self.nextSequenceAppLock += 1
-                # removing header information before forwarding data to application
+                #Remove header data before forwading
                 self.receiverBuffer.remove(data)
                 return data[1]["data"]
             else:
@@ -289,30 +286,26 @@ class RUDP:
         except Exception as e:
             print("Error occured in reliable read: ", e)
 
-    def writeHelper(self, data, data_type, retransmit=False):
+    def writeHelper(self, data, typeData, retransmit=False):
         try:
             if self.sock == None:
                 raise createSocketError("Socket not created")
-
             data = deepcopy(data)
             # setting type of packet in header information
-            data["type"] = data_type
-            if data_type == "DATA" and retransmit == False:
+            data["type"] = typeData
+            if typeData == "DATA" and retransmit == False:
                 with self.senderLock:
-                    self.senderBuffer.append((data["seq"], data, time.time()))
-
-            data_send = pickle.dumps(data)
-
-            if len(data_send) > RUDP.packetSize:
+                    item = (data["seq"], data, time.time())
+                    self.senderBuffer.append(item)
+            sendData = pickle.dumps(data)
+            if RUDP.packetSize < len(sendData):
                 raise Exception("Packet size greater the allowed size.")
-
             rn = random.randint(0, 11)
-
             # simulating ACK packet loss
             if rn >= RUDP.packetLosses:
                 try:
                     with self.sendSocketLock:
-                        self.sock.sendall(data_send)
+                        self.sock.sendall(sendData)
                 except Exception as _:
                     return
             else:
@@ -325,13 +318,15 @@ class RUDP:
             if len(self.senderBuffer) > RUDP.windowSize:
                 print("buffer size full")
                 return False
-            data = deepcopy(data)  # if user modify the object, the shouldn't be changed
+            # if user modify the object, the shouldn't be changed
+            data = deepcopy(data)  
             seq = self.getNextSequenceNumber()
-            data_snd = {}  # it will store header information
-            data_snd["seq"] = seq
-            data_snd["data"] = data
-            data_snd["hash"] = hashlib.md5(pickle.dumps(data)).hexdigest()
-            self.writeHelper(data_snd, "DATA")
+             #it will store header information
+            sendData = {}  
+            sendData["seq"] = seq
+            sendData["data"] = data
+            sendData["hash"] = hashlib.md5(pickle.dumps(data)).hexdigest()
+            self.writeHelper(sendData, "DATA")
             return True
         except Exception as e:
             print("Error in non-blocking send: ", e)
