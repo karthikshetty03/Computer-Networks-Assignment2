@@ -63,17 +63,64 @@ class RUDP:
         # last seq number of packet transferred to application
         self.nextSequenceAppLock = self.sequenceNumber + 1
 
-    def rateOfpacketLoss(self, value):
-        if value <= 10 and value >= 0:
-            RUDP.packetLosses = value
-        else:
-            raise Exception("Value not in range. (0 - 10)")
+    """
+    Standard socket functions for creating socket and sending/recieving data 
+    with reliability helper functions called for reliable UDP transfer protocol
+    """
 
     def socketInit(self, interface, port):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         sock.bind((interface, port))
         return sock
+
+    def connect(self, interface, port):
+        self.sock.connect((interface, port))
+        self.statusOfConn = True
+
+    def listen(self):
+        if self.statusOfConn == False:
+            raise createConnectionError("First connect to other peer.")
+        listenerThread = Thread(target=self.listenerHelper)
+        retransmissionThread = Thread(target=self.retransmitHelper)
+        listenerThread.start()
+        retransmissionThread.start()
+
+    def send(self, data, blocking=True):
+        if not isinstance(data, Hashable):
+            raise Exception("Data object is not hashable.")
+        if blocking == True:
+            while self.sendNonBlockingMode(data) == False:
+                time.sleep(RUDP.blockAndSleep)
+        else:
+            return self.sendNonBlockingMode(data)
+
+    def recv(self, blocking=True):
+        if blocking == True:
+            while True:
+                data = self.readHelper()
+                if data != None:
+                    data = deepcopy(data)
+                    return data
+                time.sleep(RUDP.blockAndSleep)
+        else:
+            data = self.readHelper()
+            data = deepcopy(data)
+            return data
+
+    def close(self):
+        self.statusOfConn = False
+        self.closeConnTime = time.time()
+
+    def rateOfpacketLoss(self, value):
+        if value <= 10 and value >= 0:
+            RUDP.packetLosses = value
+        else:
+            raise Exception("Value not in range. (0 - 10)")
+
+    """
+    Reliability Helper Functions over UDP protocol
+    """
 
     def retransmitHelper(self):
         while True:
@@ -93,28 +140,6 @@ class RUDP:
                     else:
                         break
             print("# packets in buffer: ", len(self.senderBuffer))
-
-    # connect function for clients
-    def connect(self, interface, port):
-        self.sock.connect((interface, port))
-        self.statusOfConn = True
-
-    def close(self):
-        self.statusOfConn = False
-        self.closeConnTime = time.time()
-
-    def getNextSequenceNumber(self):
-        with self.sequenceLock:
-            self.sequenceNumber += 1
-            return self.sequenceNumber
-
-    def listen(self):
-        if self.statusOfConn == False:
-            raise createConnectionError("First connect to other peer.")
-        listenerThread = Thread(target=self.listenerHelper)
-        retransmissionThread = Thread(target=self.retransmitHelper)
-        listenerThread.start()
-        retransmissionThread.start()
 
     def listenerHelper(self):
         if self.sock == None:
@@ -233,27 +258,10 @@ class RUDP:
         else:
             print("packet lost")
 
-    def getBufferSize(self):
-        return self.receiverBuffer
-
-    def recv(self, blocking=True):
-        if blocking == True:
-            while True:
-                data = self.readHelper()
-                if data != None:
-                    data = deepcopy(data)
-                    return data
-                time.sleep(RUDP.blockAndSleep)
-        else:
-            data = self.readHelper()
-            data = deepcopy(data)
-            return data
-
     def sendNonBlockingMode(self, data):
         if len(self.senderBuffer) > RUDP.windowSize:
             print("buffer size full")
             return False
-
         data = deepcopy(data)  # if user modify the object, the shouldn't be changed
         seq = self.getNextSequenceNumber()
         data_snd = {}  # it will store header information
@@ -263,15 +271,13 @@ class RUDP:
         self.writeHelper(data_snd, "DATA")
         return True
 
-    def send(self, data, blocking=True):
-        if not isinstance(data, Hashable):
-            raise Exception("Data object is not hashable.")
+    def getNextSequenceNumber(self):
+        with self.sequenceLock:
+            self.sequenceNumber += 1
+            return self.sequenceNumber
 
-        if blocking == True:
-            while self.sendNonBlockingMode(data) == False:
-                time.sleep(RUDP.blockAndSleep)
-        else:
-            return self.sendNonBlockingMode(data)
+    def getBufferSize(self):
+        return self.receiverBuffer
 
     @staticmethod
     def printReliableStats():
