@@ -1,7 +1,4 @@
-import os
-import sys
-import time
-import random
+import os, sys, time, random
 from tqdm import tqdm
 from RUDP_protocol import RUDP
 
@@ -37,6 +34,13 @@ def fileDetails(file):
     print(f"sending {file} to client")
     return f, filesize
 
+def sendToSock(data, socket, indicator, sendData, filesize):
+    socket.send(data)
+    update_value = min(BUFFERSIZE, filesize - sendData)
+    sendData += BUFFERSIZE
+    indicator.update(update_value)
+    return sendData
+
 
 def serverLoop(socket, file_list):
     for file in file_list:
@@ -47,20 +51,49 @@ def serverLoop(socket, file_list):
             print(f"filesize: {filesize}")
 
             sendData = 0
-
-            with tqdm(total=filesize) as indicator:
-                data = f.read(BUFFERSIZE)
-                while data:
-                    socket.send(data)
-                    update_value = min(BUFFERSIZE, filesize - sendData)
-                    sendData += BUFFERSIZE
-                    indicator.update(update_value)
+            try: 
+                with tqdm(total = filesize) as indicator:
                     data = f.read(BUFFERSIZE)
-            print("\ndone sending")
+                    while data:
+                        sendData = sendToSock(data, socket, indicator, sendData, filesize)
+                        data = f.read(BUFFERSIZE)
+                print("\ndone sending")
+            except Exception as e:
+                print(e)
+            finally:
+                f.close()  
         except Exception as e:
             print(e)
-        finally:
-            f.close()
+
+def receiveFromSock(socket, receivedData, indicator, fileName):
+    data = socket.recv()
+    receivedData += len(data)
+    fileName.write(data)
+    indicator.update(len(data))
+    return receivedData
+
+def clientLoop(socket):
+    try:
+        while True:
+            print("\nwaiting for another file...")
+            filename, filesize = socket.recv()
+            print(f"filename: {filename}, filesize: {filesize}")
+            receivedData = 0
+            path = "storage/received_files/"
+            try:
+                with open(path + filename, "wb+") as f:
+                    with tqdm(total=filesize) as indicator:
+                        while True:
+                            receivedData = receiveFromSock(socket, receivedData, indicator, f)
+                            if filesize <= receivedData:
+                                break
+                    print("\ntransfer complete")
+            except Exception as e:
+                print(e)
+            finally:
+                f.close()
+    except Exception as e:
+        print(e)
 
 
 def server():
@@ -78,31 +111,6 @@ def server():
             serverLoop(socket, file_list)
     except Exception as e:
         print(e)
-
-
-def clientLoop(socket):
-    try:
-        while True:
-            print("\nwaiting for another file...")
-            filename, filesize = socket.recv()
-            print(f"filename: {filename}, filesize: {filesize}")
-            receivedData = 0
-
-            with open("storage/received_files/" + filename, "wb+") as f:
-                with tqdm(total=filesize) as indicator:
-                    while True:
-                        data = socket.recv()
-                        receivedData += len(data)
-                        f.write(data)
-                        indicator.update(len(data))
-                        if receivedData >= filesize:
-                            break
-            print("\ntransfer complete")
-    except Exception as e:
-        print(e)
-    finally:
-        f.close()
-
 
 def client():
     socket = RUDP("localhost", port2)
