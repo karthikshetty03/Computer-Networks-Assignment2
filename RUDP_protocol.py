@@ -4,17 +4,8 @@ from copy import deepcopy
 from pprint import pprint
 from threading import Lock, Thread
 
-DEBUG_MODE = 0  # change it to false for stdout prints from protocol
-
-
-def switch(val, *args, **kargs):
-    if val == 1:
-        builtins.print(*args, **kargs)
-
-
-def print(*args, **kargs):
-    if DEBUG_MODE == 1:
-        switch(DEBUG_MODE, args, kargs)
+# change it to false for stdout prints from protocol
+DEBUG_MODE = 0
 
 
 class createSocketError(RuntimeError):
@@ -31,6 +22,16 @@ class createConnectionError(RuntimeError):
 
     def __str__(self):
         return repr(self.value)
+
+
+def switch(self, val, *args, **kargs):
+    if val == 1:
+        builtins.print(*args, **kargs)
+
+
+def print(self, *args, **kargs):
+    if DEBUG_MODE == 1:
+        switch(1, args, kargs)
 
 
 """ RELIABKE UDP PROTOCOL  """
@@ -63,7 +64,7 @@ class RUDP:
         self.nextSequenceAppLock = self.sequenceNumber + 1
 
     def packet_loss_rate(self, value):
-        if (10 >= value and value >= 0):
+        if 10 >= value and value >= 0:
             RUDP.PACKET_LOSS = value
         else:
             raise Exception("Value not in range. (0 - 10)")
@@ -350,7 +351,12 @@ class RUDP:
     @staticmethod
     def printReliableStats():
         print("bufferSize (bytes recv function accepts): ", RUDP.bufferSize)
-        print("windowSize (number of packets in send or recv buffer): ", RUDP.windowSize)
+        print(
+            "windowSize (number of packets in send or recv buffer): ", RUDP.windowSize
+        )
         print("packetSize (Max size of send packet in bytes): ", RUDP.packetSize)
-        print("connectionTimeout (time in seconds to retransmit packet): ", RUDP.connectionTimeout)
+        print(
+            "connectionTimeout (time in seconds to retransmit packet): ",
+            RUDP.connectionTimeout,
+        )
         print("blockAndSleep (time in seconds to recheck buffer): ", RUDP.blockAndSleep)

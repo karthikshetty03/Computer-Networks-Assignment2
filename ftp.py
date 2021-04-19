@@ -34,6 +34,7 @@ def fileDetails(file):
     print(f"sending {file} to client")
     return f, filesize
 
+
 def sendToSock(data, socket, indicator, sendData, filesize):
     socket.send(data)
     update_value = min(BUFFERSIZE, filesize - sendData)
@@ -51,19 +52,22 @@ def serverLoop(socket, file_list):
             print(f"filesize: {filesize}")
 
             sendData = 0
-            try: 
-                with tqdm(total = filesize) as indicator:
+            try:
+                with tqdm(total=filesize) as indicator:
                     data = f.read(BUFFERSIZE)
                     while data:
-                        sendData = sendToSock(data, socket, indicator, sendData, filesize)
+                        sendData = sendToSock(
+                            data, socket, indicator, sendData, filesize
+                        )
                         data = f.read(BUFFERSIZE)
                 print("\ndone sending")
             except Exception as e:
                 print(e)
             finally:
-                f.close()  
+                f.close()
         except Exception as e:
             print(e)
+
 
 def receiveFromSock(socket, receivedData, indicator, fileName):
     data = socket.recv()
@@ -71,6 +75,7 @@ def receiveFromSock(socket, receivedData, indicator, fileName):
     fileName.write(data)
     indicator.update(len(data))
     return receivedData
+
 
 def clientLoop(socket):
     try:
@@ -84,7 +89,9 @@ def clientLoop(socket):
                 with open(path + filename, "wb+") as f:
                     with tqdm(total=filesize) as indicator:
                         while True:
-                            receivedData = receiveFromSock(socket, receivedData, indicator, f)
+                            receivedData = receiveFromSock(
+                                socket, receivedData, indicator, f
+                            )
                             if filesize <= receivedData:
                                 break
                     print("\ntransfer complete")
@@ -111,6 +118,7 @@ def server():
             serverLoop(socket, file_list)
     except Exception as e:
         print(e)
+
 
 def client():
     socket = RUDP("localhost", port2)
