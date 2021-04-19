@@ -58,8 +58,8 @@ class RUDP:
     """
 
     def seqLock(self):
-        self.sequenceLock = Lock()
         self.sequenceAppLock = Lock()
+        self.sequenceLock = Lock()
         # last seq number of packet transferred to application
         self.nextSequenceAppLock = self.sequenceNumber + 1
 
@@ -83,8 +83,8 @@ class RUDP:
         self.sequenceHash = {}
 
     def createSock(self, interface, port):
-        self.interface = interface
         self.port = port
+        self.interface = interface
         self.sock = self.socketInit(interface, port)
 
     def initializeBuffer(self):
@@ -182,23 +182,26 @@ class RUDP:
                 if not self.statusOfConn and len(self.senderBuffer) == 0:
                     return
                 with self.senderLock:
-                    print(
-                        "The lock has been acquired by the retransmiting thread to retransmit  timed out packets"
-                    )
-                    currentSenderBuffer = self.senderBuffer
-                    i = 0
-                    while i < len(currentSenderBuffer):
-                        time_now = time.time()
-                        diff = time_now - currentSenderBuffer[i][2]
-                        if RUDP.connectionTimeout <= diff:
-                            print("Retransmitting: ", currentSenderBuffer[i][0])
-                            self.writeHelper(
-                                currentSenderBuffer[i][1], "DATA", retransmit=True
-                            )
-                        else:
-                            # The remaining packets have not been timed out yet
-                            break
-                        i += 1
+                    try:
+                        print(
+                            "The lock has been acquired by retransmiting thread to retransmit timed out packets"
+                        )
+                        currentSenderBuffer = self.senderBuffer
+                        i = 0
+                        while i < len(currentSenderBuffer):
+                            time_now = time.time()
+                            diff = time_now - currentSenderBuffer[i][2]
+                            if RUDP.connectionTimeout <= diff:
+                                print("Retransmitting: ", currentSenderBuffer[i][0])
+                                self.writeHelper(
+                                    currentSenderBuffer[i][1], "DATA", retransmit=True
+                                )
+                            else:
+                                # The remaining packets have not been timed out yet
+                                break
+                            i += 1
+                    except Exception as e:
+                        print(e)
         except Exception as e:
             print("Error occured while retransmiting packets: ", e)
         finally:
@@ -293,7 +296,10 @@ class RUDP:
                 data = min(data, val)
             if "data" in data[1] and data[0] == self.nextSequenceAppLock:
                 with self.sequenceAppLock:
-                    self.nextSequenceAppLock += 1
+                    try:
+                        self.nextSequenceAppLock += 1
+                    except Exception as e:
+                        print(e)
                 # Remove header data before forwading
                 self.receiverBuffer.remove(data)
                 return data[1]["data"]
@@ -309,25 +315,36 @@ class RUDP:
             data = deepcopy(data)
             # setting type of packet in header information
             data["type"] = typeData
-            if typeData == "DATA" and retransmit == False:
+            if typeData == "DATA" and not retransmit:
                 with self.senderLock:
-                    item = (data["seq"], data, time.time())
-                    self.senderBuffer.append(item)
+                    try:
+                        currTime = time.time()
+                        item = (data["seq"], data, currTime)
+                        self.senderBuffer.append(item)
+                    except Exception as e:
+                        print(e)
             sendData = pickle.dumps(data)
             if RUDP.packetSize < len(sendData):
-                raise Exception("Packet size greater the allowed size.")
+                raise Exception("Packet size exceeds max allowed size....")
             rn = random.randint(0, 11)
             # simulating ACK packet loss
             if rn >= RUDP.packetLosses:
                 try:
                     with self.sendSocketLock:
                         self.sock.sendall(sendData)
-                except Exception as _:
+                except Exception as e:
+                    print(e)
                     return
             else:
-                print("packet lost")
+                print("Packet has been lost....")
         except Exception as e:
             print("Error occured in reliable write", e)
+
+    def getData(self, seq, data):
+        keys = ["data", "seq", "hash"]
+        values = [data, seq, hashlib.md5(pickle.dumps(data)).hexdigest()]
+        sendData = {k: v for k, v in zip(keys, values)}
+        return sendData
 
     def sendNonBlockingMode(self, data):
         try:
@@ -344,23 +361,3 @@ class RUDP:
             return True
         except Exception as e:
             print("Error in non-blocking send: ", e)
-
-    def getData(self, seq, data):
-        sendData = {}
-        sendData["data"] = data
-        sendData["seq"] = seq
-        sendData["hash"] = hashlib.md5(pickle.dumps(data)).hexdigest()
-        return sendData
-
-    @staticmethod
-    def printReliableStats():
-        print("bufferSize (bytes recv function accepts): ", RUDP.bufferSize)
-        print(
-            "windowSize (number of packets in send or recv buffer): ", RUDP.windowSize
-        )
-        print("packetSize (Max size of send packet in bytes): ", RUDP.packetSize)
-        print(
-            "connectionTimeout (time in seconds to retransmit packet): ",
-            RUDP.connectionTimeout,
-        )
-        print("blockAndSleep (time in seconds to recheck buffer): ", RUDP.blockAndSleep)
