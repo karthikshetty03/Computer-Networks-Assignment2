@@ -61,7 +61,8 @@ class RUDP:
         self.sequenceAppLock = Lock()
         self.sequenceLock = Lock()
         # last seq number of packet transferred to application
-        self.nextSequenceAppLock = self.sequenceNumber + 1
+        self.nextSequenceAppLock = self.sequenceNumber
+        self.nextSequenceAppLock += 1
 
     def packet_loss_rate(self, value):
         if 10 >= value and value >= 0:
@@ -111,7 +112,7 @@ class RUDP:
             sock.bind(item)
             return sock
         except Exception as e:
-            print("Eroor occured while creating socket!: ", e)
+            print("Eroor occurself.nextSequenceAppLocked while creating socket!: ", e)
 
     def connect(self, interface, port):
         try:
@@ -125,10 +126,15 @@ class RUDP:
         try:
             if not self.statusOfConn:
                 raise createConnectionError("First connect to other peer.")
+
+            # create listener and retransmission threads
             listenerThread = Thread(target=self.listenerHelper)
             retransmissionThread = Thread(target=self.retransmitHelper)
+
+            # start listener and retransmission threads
             listenerThread.start()
             retransmissionThread.start()
+
         except Exception as e:
             print("Erro occured while listen: ", e)
 
@@ -146,17 +152,18 @@ class RUDP:
 
     def recv(self, blocking=True):
         try:
-            if blocking == True:
+            if not blocking:
+                data = self.readHelper()
+                data = deepcopy(data)
+                return data
+            else:
                 while True:
                     data = self.readHelper()
                     if data != None:
                         data = deepcopy(data)
                         return data
                     time.sleep(RUDP.blockAndSleep)
-            else:
-                data = self.readHelper()
-                data = deepcopy(data)
-                return data
+
         except Exception as e:
             print("Error occured while receiving data: ", e)
 
@@ -275,7 +282,7 @@ class RUDP:
                         self.receiverBuffer.append((receivedData["seq"], receivedData))
                         self.sequenceHash[receivedData["seq"]] = True
                     else:
-                        print("data rejected: data already recieved or buffer full")
+                        print("data rejected:  buffer full or data already recieved!")
         except Exception as e:
             print("Error occured in reliable listener: ", e)
 
@@ -342,7 +349,7 @@ class RUDP:
     def sendNonBlockingMode(self, data):
         try:
             if len(self.senderBuffer) > RUDP.windowSize:
-                print("buffer size full")
+                print("buffer size is full")
                 return False
             # if user modify the object, the shouldn't be changed
             data = deepcopy(data)
