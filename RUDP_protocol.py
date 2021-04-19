@@ -339,14 +339,18 @@ class RUDP:
             self.sequenceNumber += 1
             seq = self.sequenceNumber
             # it will store header information
-            sendData = {}
-            sendData["seq"] = seq
-            sendData["data"] = data
-            sendData["hash"] = hashlib.md5(pickle.dumps(data)).hexdigest()
+            sendData = self.getData(seq, data)
             self.writeHelper(sendData, "DATA")
             return True
         except Exception as e:
             print("Error in non-blocking send: ", e)
+
+    def getData(self, seq, data):
+        sendData = {}
+        sendData["data"] = data
+        sendData["seq"] = seq
+        sendData["hash"] = hashlib.md5(pickle.dumps(data)).hexdigest()
+        return sendData
 
     @staticmethod
     def printReliableStats():
