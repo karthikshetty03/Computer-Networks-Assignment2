@@ -3,8 +3,8 @@ from tqdm import tqdm
 from RUDP_protocol import RUDP
 
 
-port1 = 8083
-port2 = 8084
+port1 = 8081
+port2 = 8082
 BUFFERSIZE = 512
 
 

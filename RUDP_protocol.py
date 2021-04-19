@@ -62,6 +62,12 @@ class RUDP:
         # last seq number of packet transferred to application
         self.nextSequenceAppLock = self.sequenceNumber + 1
 
+    def packet_loss_rate(self, value):
+        if (10 >= value and value >= 0):
+            RUDP.PACKET_LOSS = value
+        else:
+            raise Exception("Value not in range. (0 - 10)")
+
     def initializeSendRecvLock(self):
         self.senderLock = Lock()
         self.recieveSocketLock = Lock()
@@ -100,7 +106,6 @@ class RUDP:
     def socketInit(self, interface, port):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind((interface, port))
             return sock
         except Exception as e:
