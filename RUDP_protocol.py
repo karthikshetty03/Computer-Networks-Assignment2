@@ -107,14 +107,16 @@ class RUDP:
     def socketInit(self, interface, port):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.bind((interface, port))
+            item = (interface, port)
+            sock.bind(item)
             return sock
         except Exception as e:
             print("Eroor occured while creating socket!: ", e)
 
     def connect(self, interface, port):
         try:
-            self.sock.connect((interface, port))
+            item = (interface, port)
+            self.sock.connect(item)
             self.statusOfConn = True
         except Exception as e:
             print("Error occured while trying to connect: ", e)
@@ -161,7 +163,8 @@ class RUDP:
     def close(self):
         try:
             self.statusOfConn = False
-            self.closeConnTime = time.time()
+            currTime = time.time()
+            self.closeConnTime = currTime
         except Exception as e:
             print("Error occured while closing connection: ", e)
 
@@ -183,19 +186,15 @@ class RUDP:
                     return
                 with self.senderLock:
                     try:
-                        print(
-                            "The lock has been acquired by retransmiting thread to retransmit timed out packets"
-                        )
-                        currentSenderBuffer = self.senderBuffer
+                        print("Lock acquired by retransmiting thread")
+                        currSB = self.senderBuffer
                         i = 0
-                        while i < len(currentSenderBuffer):
+                        while i < len(currSB):
                             time_now = time.time()
-                            diff = time_now - currentSenderBuffer[i][2]
+                            diff = time_now - currSB[i][2]
                             if RUDP.connectionTimeout <= diff:
-                                print("Retransmitting: ", currentSenderBuffer[i][0])
-                                self.writeHelper(
-                                    currentSenderBuffer[i][1], "DATA", retransmit=True
-                                )
+                                print("Retransmitting: ", currSB[i][0])
+                                self.writeHelper(currSB[i][1], "DATA", retransmit=True)
                             else:
                                 # The remaining packets have not been timed out yet
                                 break
@@ -205,18 +204,16 @@ class RUDP:
         except Exception as e:
             print("Error occured while retransmiting packets: ", e)
         finally:
-            print("Number of packets in the sender buffer: ", len(currentSenderBuffer))
+            print("Number of packets in the sender buffer: ", len(currSB))
 
     def listenerHelper(self):
         try:
             if self.sock == None:
                 raise createSocketError("Socket not created")
-
             # counts number of acke'd packets still in sent list
             count_ACK = 0
             map_ACK = set()
             print("Listening at {}:".format(self.sock.getsockname()))
-
             while True:
                 try:
                     with self.recieveSocketLock:
@@ -235,10 +232,9 @@ class RUDP:
                     map_ACK.add(receivedData["seqence_ACK"])
                     partition = RUDP.windowSize / 10
                     diff = time.time() - self.closeConnTime
-
-                    if count_ACK >= partition or (
-                        diff >= 5 * RUDP.connectionTimeout and not self.statusOfConn
-                    ):
+                    myval = 5 * RUDP.connectionTimeout
+                    cs = self.statusOfConn
+                    if count_ACK >= partition or (diff >= myval and not cs):
                         count_ACK = 0
                         tempList = []
                         with self.senderLock:
@@ -259,27 +255,23 @@ class RUDP:
                         continue
 
                     data = receivedData["data"]
-
-                    if (
-                        hashlib.md5(pickle.dumps(data)).hexdigest()
-                        != receivedData["hash"]
-                    ):
+                    myhash = hashlib.md5(pickle.dumps(data)).hexdigest()
+                    if myhash != receivedData["hash"]:
                         # check if any inconsistant data has arrived
                         print("inconsistent data received")
                         continue
 
-                    if (
-                        len(self.receiverBuffer) < RUDP.windowSize
-                    ) or self.sequenceHash.get(receivedData["seq"]) != None:
+                    cl = len(self.receiverBuffer)
+                    myobj = self.sequenceHash.get(receivedData["seq"])
+                    if (cl < RUDP.windowSize) or myobj != None:
                         print("sending ACK for: ", receivedData["seq"])
                         sendData = {}
                         sendData["seqence_ACK"] = receivedData["seq"]
                         self.writeHelper(sendData, "ACK")
 
-                    if (
-                        len(self.receiverBuffer) < RUDP.windowSize
-                        and self.sequenceHash.get(receivedData["seq"]) == None
-                    ):
+                    cl = len(self.receiverBuffer)
+                    myobj = self.sequenceHash.get(receivedData["seq"])
+                    if cl < RUDP.windowSize and myobj == None:
                         self.receiverBuffer.append((receivedData["seq"], receivedData))
                         self.sequenceHash[receivedData["seq"]] = True
                     else:
@@ -289,7 +281,8 @@ class RUDP:
 
     def readHelper(self):
         try:
-            if len(self.receiverBuffer) == 0:
+            cl = len(self.receiverBuffer)
+            if cl == 0:
                 return None
             data = self.receiverBuffer[0]
             for val in self.receiverBuffer:
