@@ -6,8 +6,6 @@ from threading import Lock, Thread
 
 # change it to false for stdout prints from protocol
 DEBUG_MODE = 0
-
-
 class createSocketError(RuntimeError):
     def __init__(self, value):
         self.value = value

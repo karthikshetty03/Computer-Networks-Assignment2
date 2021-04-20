@@ -1,11 +1,11 @@
 import time
 
-from fssp_protocol import FSSP
+from RUDP_protocol import RUDP
 
 
 def sender():
 
-    conn = FSSP("localhost", 2000)
+    conn = RUDP("localhost", 2000)
     conn.connect("localhost", 3000)
     conn.listen()
     time.sleep(5)
@@ -24,7 +24,7 @@ def sender():
 
 def receiver():
 
-    conn = FSSP("localhost", 3000)
+    conn = RUDP("localhost", 3000)
     conn.connect("localhost", 2000)
     conn.listen()
     test_val = 1
