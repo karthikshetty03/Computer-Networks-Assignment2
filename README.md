@@ -1,5 +1,14 @@
-## RUDP (Reliable UDP)
-### *Reliable and Simple Protocol For Humans.*
+CS F303 Computer Networks Assignment 2
+Reliable UDP (RUDP)
+
+
+Shetty Karthik Ravindra 2018A7PS0141H
+Akshat Bajpai 2018A7PS0498H
+Koustubh Sharma 2018A7PS0114H
+Rishabh Baid 2018A7PS0189H
+Abhirath Singh Parmar 2018A7PS0521H
+Aryan Sharma 2018A7PS0245H
+
 
 RUDP provides reliable communication over unreliable UDP protocol and also directly works with
 python objects for simplicity. This class provides API ​ ( application program interface) for the
